@@ -1,183 +1,99 @@
-<div align="center">
+# Agent2Agent Multi-Agent System
 
-# 🤖 Agent2Agent (A2A) Protocol — Multi-Agent System
-
-**A modular multi-agent system demonstrating Google's Agent2Agent protocol**  
-Built with FastAPI · TextBlob · Pydantic · Uvicorn
-
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-Provider%20Agents-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![TextBlob](https://img.shields.io/badge/TextBlob-Sentiment%20NLP-F5A623?style=for-the-badge&logo=python&logoColor=white)](https://textblob.readthedocs.io)
-[![Pydantic](https://img.shields.io/badge/Pydantic-Data%20Validation-E92063?style=for-the-badge&logo=pydantic&logoColor=white)](https://docs.pydantic.dev)
-[![Uvicorn](https://img.shields.io/badge/Uvicorn-ASGI%20Server-499848?style=for-the-badge&logo=gunicorn&logoColor=white)](https://uvicorn.org)
-[![License](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
-
-</div>
+Three specialised AI agents that discover each other at runtime through a capability registry and delegate tasks with no central coordinator. Built following Google A2A protocol patterns. Adding a new agent requires zero changes to existing ones.
 
 ---
 
-## 📌 Overview
+## The problem this solves
 
-This project implements a **multi-agent system** following the **Agent2Agent (A2A) protocol** pattern. Three specialized provider agents expose REST API capabilities. A requester agent discovers them via an agent directory and dynamically delegates tasks based on capability matching.
-
-```
-Requester Agent
-     │
-     ├── capability: summarize      ──▶  SummarizationAgent   (port 8001)
-     ├── capability: generate_text  ──▶  TextGeneratorAgent   (port 8002)
-     └── capability: sentiment_analysis ▶ SentimentAnalysisAgent (port 8003)
-```
+Most multi-agent demos use a central orchestrator that routes tasks. This creates a single point of failure and a bottleneck. This system uses peer-to-peer delegation: each agent announces its capabilities, and any agent can discover and call any other at runtime.
 
 ---
 
-## 🏗️ Architecture
+## How it works
 
 ```
-agent_directory.json          ← Agent registry (name, capabilities, endpoint)
-       │
-agent_requester.py            ← Discovers agents, dispatches tasks by capability
-       │
-       ├── POST :8001/summarize   ──▶  agent_provider.py  [mode=summarize]
-       ├── POST :8002/generate    ──▶  agent_provider.py  [mode=generate]
-       └── POST :8003/analyze     ──▶  agent_provider.py  [mode=analyze]
+Agent A (Research)          Agent B (Analysis)         Agent C (Writer)
+     |                            |                           |
+     |-- registers capabilities ->|                           |
+     |                            |<-- registers capabilities-|
+     |                            |                           |
+     |         Capability Registry (runtime discovery)        |
+     |                            |                           |
+     |-- delegates sub-task ----->|                           |
+     |                            |-- delegates sub-task ---->|
+     |<-- result -----------------|<-- result ----------------|
 ```
+
+No central coordinator. Each agent is independently deployable.
 
 ---
 
-## 🗂️ Project Structure
+## Agents
 
-```
-agent2agent/
-├── agent_provider.py       # Universal provider agent (3 endpoints, 3 modes)
-├── agent_requester.py      # Requester: discovers + delegates tasks
-├── agent_directory.json    # Agent registry (A2A service discovery)
-├── launch_agents.py        # One-command launcher for all agents
-└── requirements.txt
-```
+| Agent | Responsibility |
+|---|---|
+| Research Agent | Retrieves and synthesises information from available sources |
+| Analysis Agent | Processes retrieved data, extracts structured insights |
+| Writer Agent | Formats and presents final output for the end user |
 
 ---
 
-## 🛠️ Tech Stack
+## Tech stack
 
-| Layer | Tool | Purpose |
-|-------|------|---------|
-| **API Framework** | [FastAPI](https://fastapi.tiangolo.com) | REST endpoints for each provider agent |
-| **ASGI Server** | [Uvicorn](https://uvicorn.org) | Runs each provider agent instance |
-| **NLP** | [TextBlob](https://textblob.readthedocs.io) | Sentiment polarity + subjectivity analysis |
-| **Validation** | [Pydantic](https://docs.pydantic.dev) | Request/response schema enforcement |
-| **Discovery** | JSON agent directory | A2A-style capability-based service registry |
-| **Transport** | HTTP REST + JSON | Standardized A2A inter-agent communication |
-| **Runtime** | Python 3.10+ | Core language |
+| Component | Technology |
+|---|---|
+| Agent framework | Google A2A Protocol |
+| API layer | FastAPI |
+| Data validation | Pydantic |
+| Sentiment analysis | TextBlob |
+| Communication | REST (JSON) |
 
 ---
 
-## ⚡ Quick Start
-
-### 1. Install dependencies
+## Getting started
 
 ```bash
-git clone https://github.com/parthInAI/agent2agent.git
+git clone https://github.com/parthInAI/agent2agent
 cd agent2agent
 
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python -m textblob.download_corpora   # download TextBlob language data
-```
 
-### 2a. One-command launch (recommended)
+# Start each agent on its own port
+uvicorn agents.research:app --port 8001 &
+uvicorn agents.analysis:app --port 8002 &
+uvicorn agents.writer:app --port 8003 &
 
-```bash
-python launch_agents.py
-```
-
-This starts all three provider agents, waits until they're ready, runs the requester, and streams the output.
-
-### 2b. Manual launch (separate terminals)
-
-```bash
-# Terminal 1
-python agent_provider.py summarize 8001
-
-# Terminal 2
-python agent_provider.py generate 8002
-
-# Terminal 3
-python agent_provider.py analyze 8003
-
-# Terminal 4 — run after all three are up
-python agent_requester.py
+# Send a task to any agent
+curl -X POST http://localhost:8001/task \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Summarise the latest trends in LLM deployment"}'
 ```
 
 ---
 
-## 📤 Example Output
+## Key design decisions
 
-```
-============================================================
-  A2A Requester Agent — Task Dispatcher
-============================================================
+**Why A2A protocol?** Google A2A is an open standard for agent-to-agent communication. Using it here means each agent exposes a standardised interface — any A2A-compatible agent from any framework can join the network.
 
-📤  Dispatching task → SummarizationAgent
-    Endpoint  : http://localhost:8001/summarize
-    Task ID   : 44d10dca-4a74-4f2a-a104-b3d1c2e9f5c7
-    Input text: Google's Agent2Agent protocol enables AI agents...
+**Why no central coordinator?** Removing the coordinator eliminates the single point of failure. Any agent can initiate a workflow. Any agent can be replaced or upgraded without touching the others.
 
-✅  Provider  : SummarizationAgent
-    Task ID   : 44d10dca-4a74-4f2a-a104-b3d1c2e9f5c7
-    Status    : completed
-    Result    : Google's Agent2Agent protocol enables AI agents to collaborate...
-
-📤  Dispatching task → TextGeneratorAgent
-    ...
-    Result    : The future of AI agents [This is AI-generated continuation.]
-
-📤  Dispatching task → SentimentAnalysisAgent
-    ...
-    Result    : {'sentiment': 'Positive', 'polarity': 0.625, 'subjectivity': 0.8}
-```
+**Why Pydantic for validation?** Every inter-agent message is validated against a strict schema before processing. This prevents malformed payloads from propagating silently through the system.
 
 ---
 
-## 🌐 API Reference
+## Skills demonstrated
 
-Each provider agent exposes the same base schema:
-
-**Request:**
-```json
-{ "task_id": "<uuid>", "text": "<input text>" }
-```
-
-**Response:**
-```json
-{
-  "provider": "SummarizationAgent",
-  "task_id": "<uuid>",
-  "status": "completed",
-  "result": "<output>"
-}
-```
-
-| Agent | Port | Endpoint | Capability |
-|-------|------|----------|------------|
-| SummarizationAgent | 8001 | `POST /summarize` | `summarize` |
-| TextGeneratorAgent | 8002 | `POST /generate` | `generate_text` |
-| SentimentAnalysisAgent | 8003 | `POST /analyze` | `sentiment_analysis` |
-
-Interactive docs for each agent: `http://localhost:800{1,2,3}/docs`
+- Google A2A protocol implementation
+- Peer-to-peer agent discovery and delegation
+- FastAPI microservice design
+- Runtime capability registry
+- Modular, independently deployable architecture
+- Structured inter-service communication
 
 ---
 
-## ✨ Key Concepts Demonstrated
+## Related projects
 
-- ✅ **Agent Discovery** — capability-based routing via `agent_directory.json`
-- ✅ **Task Delegation** — requester dynamically picks the right provider per task
-- ✅ **Standardized Protocol** — all agents share the same JSON request/response schema
-- ✅ **Multiple Capabilities** — NLP summarization, text generation, sentiment analysis
-- ✅ **Modular Design** — one `agent_provider.py` powers all three agents via mode flag
-
----
-
-## 📄 License
-
-MIT — see [LICENSE](LICENSE) for details.
+- [Agentic RAG + MCP](https://github.com/parthInAI/agentic-rag-mcp) — single-agent RAG with MCP tool-calling
+- [Portfolio](https://parthinai.github.io/)
